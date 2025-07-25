@@ -13,7 +13,7 @@ URLSARRAY=()
 
 urlsConfig="./urls.cfg"
 echo "Reading $urlsConfig"
-while read -r line
+while IFS= read -r line || [[ -n "$line" ]];
 do
   echo "  $line"
   IFS='=' read -ra TOKENS <<< "$line"
