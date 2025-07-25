@@ -22,8 +22,15 @@ function constructStatusStream(key, url, uptimeData) {
   const lastSet = uptimeData[0];
   const color = getColor(lastSet);
 
+  let title = key;
+  if (key.includes("_app")) {
+    title = "Application";
+  } else if (key.includes("_website")) {
+    title = "Website";
+  }
+
   const container = templatize("statusContainerTemplate", {
-    title: key,
+    title: title,
     url: url,
     color: color,
     status: getStatusText(color),
