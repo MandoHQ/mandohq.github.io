@@ -10,6 +10,7 @@ fi
 
 KEYSARRAY=()
 URLSARRAY=()
+FAILED_CHECKS=()
 
 urlsConfig="./urls.cfg"
 echo "Reading $urlsConfig"
@@ -54,7 +55,26 @@ do
   else
     echo "    $dateTime, $result"
   fi
+  
+  # Track failures for notifications
+  if [ "$result" = "failed" ]; then
+    FAILED_CHECKS+=("• ${key}: ${url}")
+  fi
 done
+
+# Export failures to GitHub Actions outputs
+if [ ${#FAILED_CHECKS[@]} -gt 0 ]; then
+  echo "has_failures=true" >> $GITHUB_OUTPUT
+  # Join array with newlines for the output
+  FAILED_LIST=$(printf '%s\n' "${FAILED_CHECKS[@]}")
+  echo "failed_checks<<EOF" >> $GITHUB_OUTPUT
+  echo "$FAILED_LIST" >> $GITHUB_OUTPUT
+  echo "EOF" >> $GITHUB_OUTPUT
+  echo "⚠️  ${#FAILED_CHECKS[@]} health check(s) failed!"
+else
+  echo "has_failures=false" >> $GITHUB_OUTPUT
+  echo "✅ All health checks passed!"
+fi
 
 if [[ $commit == true ]]
 then

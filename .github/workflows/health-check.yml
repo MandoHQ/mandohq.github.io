@@ -3,7 +3,7 @@ name: Scheduled Health Check
 # Controls when the action will run.
 on:
   schedule:
-    - cron: "30 * * * *"
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -17,6 +17,42 @@ jobs:
     name: Check all sites
     steps:
       - uses: actions/checkout@v2
-      - name: Run Shell Script
-        id: shell_script_run
+      - name: Run Health Check
+        id: health_check
         run: bash ./health-check.sh
+
+      - name: Notify MS Teams on Failure
+        if: steps.health_check.outputs.has_failures == 'true'
+        env:
+          WEBHOOK_URL: ${{ secrets.MS_TEAMS_WEBHOOK }}
+          FAILED_CHECKS: ${{ steps.health_check.outputs.failed_checks }}
+        run: |
+          JSON_PAYLOAD=$(cat <<EOF
+          {
+            "msg": "🚨 **Health Check Alert**\n\nThe following endpoints are unreachable:\n${FAILED_CHECKS}\n\nImmediate attention required - backend and/or frontend services may be down."
+          }
+          EOF
+          )
+
+          curl -X POST "${WEBHOOK_URL}" \
+               -H "Content-Type: application/json" \
+               -d "$JSON_PAYLOAD"
+
+      - name: Send Email Alert via Resend
+        if: steps.health_check.outputs.has_failures == 'true'
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          FAILED_CHECKS: ${{ steps.health_check.outputs.failed_checks }}
+        run: |
+          curl -X POST "https://api.resend.com/emails" \
+               -H "Authorization: Bearer ${RESEND_API_KEY}" \
+               -H "Content-Type: application/json" \
+               -d "$(cat <<EOF
+          {
+            "from": "Mando <hello@mando.work>",
+            "to": ["engineering@mando.work", "adi@mando.work", "neelan@mando.work"],
+            "subject": "🚨 Health Check Failed - Services Down",
+            "html": "<h2>Health Check Alert</h2><p>The following endpoints failed their health checks:</p><pre>${FAILED_CHECKS}</pre><p>Please investigate immediately.</p><br><p>— Mando Health Monitor</p>"
+          }
+          EOF
+          )"
