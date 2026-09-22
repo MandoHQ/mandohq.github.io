@@ -1,5 +1,6 @@
 const maxDays = 30;
 let maintenance = null;
+let maintenanceHistory = [];
 
 async function loadMaintenance() {
   try {
@@ -8,7 +9,12 @@ async function loadMaintenance() {
       return;
     }
     const data = await response.json();
-    if (!data || !data.active) {
+    if (!data) {
+      return;
+    }
+    maintenanceHistory = data.history || [];
+    renderMaintenanceHistory(maintenanceHistory);
+    if (!data.active) {
       return;
     }
     maintenance = data;
@@ -48,6 +54,106 @@ function renderMaintenanceBanner(data) {
   banner.style.display = "block";
 }
 
+function formatDuration(start, end) {
+  const minutes = Math.round((new Date(end) - new Date(start)) / 60000);
+  if (!isFinite(minutes) || minutes < 0) {
+    return "";
+  }
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return (h ? h + "h " : "") + m + "m";
+}
+
+function renderMaintenanceHistory(history) {
+  if (!history.length) {
+    return;
+  }
+  const list = document.getElementById("historyList");
+  const sorted = history
+    .slice()
+    .sort((a, b) => new Date(b.started) - new Date(a.started));
+
+  sorted.forEach((item) => {
+    const entry = create("div", "historyItem");
+
+    const header = create("div", "historyItemHeader");
+    const title = create("span", "historyItemTitle");
+    title.innerText = item.title || "Maintenance";
+    header.appendChild(title);
+    const badge = create("span", "success historyBadge");
+    badge.innerText = "Resolved";
+    header.appendChild(badge);
+    entry.appendChild(header);
+
+    const when = create("div", "historyItemTime");
+    let whenText = "";
+    if (item.started) {
+      whenText += formatMaintenanceTime(item.started);
+    }
+    if (item.ended) {
+      whenText += " \u2013 " + formatMaintenanceTime(item.ended);
+      const duration = formatDuration(item.started, item.ended);
+      if (duration) {
+        whenText += "  \u00b7  " + duration;
+      }
+    }
+    when.innerText = whenText;
+    entry.appendChild(when);
+
+    if (item.services && item.services.length) {
+      const affected = create("div", "historyItemServices");
+      const names = [...new Set(item.services.map(getServiceTitle))];
+      affected.innerText = "Affected: " + names.join(", ");
+      entry.appendChild(affected);
+    }
+
+    if (item.message) {
+      const message = create("div", "historyItemMessage");
+      message.innerText = item.message;
+      entry.appendChild(message);
+    }
+
+    list.appendChild(entry);
+  });
+
+  document.getElementById("history").style.display = "block";
+}
+
+function getServiceTitle(key) {
+  if (key.includes("_app")) {
+    return "Application";
+  } else if (key.includes("_website")) {
+    return "Website";
+  }
+  return key;
+}
+
+function getMaintenanceForDay(key, date) {
+  const dayStr = date.toDateString();
+  for (const item of maintenanceHistory) {
+    if (!item.started || !item.ended) {
+      continue;
+    }
+    const services = item.services || [];
+    if (services.length && !services.includes(key)) {
+      continue;
+    }
+    let cursor = new Date(item.started);
+    const end = new Date(item.ended);
+    while (cursor <= end) {
+      if (cursor.toDateString() == dayStr) {
+        return item;
+      }
+      cursor.setDate(cursor.getDate() + 1);
+      cursor.setHours(0, 0, 0, 0);
+    }
+    if (end.toDateString() == dayStr) {
+      return item;
+    }
+  }
+  return null;
+}
+
 function isUnderMaintenance(key) {
   if (!maintenance) {
     return false;
@@ -79,12 +185,7 @@ function constructStatusStream(key, url, uptimeData) {
   const underMaintenance = isUnderMaintenance(key);
   const color = underMaintenance ? "maintenance" : getColor(lastSet);
 
-  let title = key;
-  if (key.includes("_app")) {
-    title = "Application";
-  } else if (key.includes("_website")) {
-    title = "Website";
-  }
+  const title = getServiceTitle(key);
 
   const container = templatize("statusContainerTemplate", {
     title: title,
@@ -116,14 +217,15 @@ function getColor(uptimeVal) {
 }
 
 function constructStatusSquare(key, date, uptimeVal) {
-  const color = getColor(uptimeVal);
+  const window = getMaintenanceForDay(key, date);
+  const color = window ? "failure" : getColor(uptimeVal);
   let square = templatize("statusSquareTemplate", {
     color: color,
     tooltip: getTooltip(key, date, color),
   });
 
   const show = () => {
-    showTooltip(square, key, date, color);
+    showTooltip(square, key, date, color, window);
   };
   square.addEventListener("mouseover", show);
   square.addEventListener("mousedown", show);
@@ -277,16 +379,21 @@ function splitRowsByDate(rows) {
 }
 
 let tooltipTimeout = null;
-function showTooltip(element, key, date, color) {
+function showTooltip(element, key, date, color, window) {
   clearTimeout(tooltipTimeout);
   const toolTipDiv = document.getElementById("tooltip");
 
   document.getElementById("tooltipDateTime").innerText = date.toDateString();
-  document.getElementById("tooltipDescription").innerText =
-    getStatusDescriptiveText(color);
+  document.getElementById("tooltipDescription").innerText = window
+    ? (window.title || "Maintenance") +
+      ": " +
+      formatMaintenanceTime(window.started) +
+      " \u2013 " +
+      formatMaintenanceTime(window.ended)
+    : getStatusDescriptiveText(color);
 
   const statusDiv = document.getElementById("tooltipStatus");
-  statusDiv.innerText = getStatusText(color);
+  statusDiv.innerText = window ? "Maintenance" : getStatusText(color);
   statusDiv.className = color;
 
   toolTipDiv.style.top = element.offsetTop + element.offsetHeight + 10;

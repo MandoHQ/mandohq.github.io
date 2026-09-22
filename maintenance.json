@@ -1,8 +1,22 @@
 {
-  "active": true,
-  "title": "Scheduled Maintenance in Progress",
-  "message": "We are currently performing planned maintenance to improve our services. During this time, some services may be temporarily unavailable or slower than usual. We sincerely apologize for any inconvenience this may cause and appreciate your patience. We will update this page as soon as the work is complete. Thank you for your understanding.",
-  "started": "2026-09-22T16:00:00Z",
+  "active": false,
+  "title": "",
+  "message": "",
+  "started": "",
   "expectedEnd": "",
-  "services": []
+  "services": [],
+  "history": [
+    {
+      "title": "Scheduled Maintenance",
+      "message": "Our application was unavailable while we performed planned maintenance. The work has been completed and all services are operating normally. We apologize for any inconvenience caused and thank you for your patience.",
+      "started": "2026-09-22T21:30:00Z",
+      "ended": "2026-09-22T22:45:00Z",
+      "services": [
+        "mando_app",
+        "joinmando_app",
+        "usemando_app",
+        "withmando_app"
+      ]
+    }
+  ]
 }
