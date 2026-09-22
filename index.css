@@ -237,6 +237,38 @@ footer a {
   color: #fff;
 }
 
+.maintenance {
+  background-color: #2f80ed;
+  color: #fff;
+}
+
+.maintenanceBanner {
+  background-color: #e8f1fc;
+  border: 1px solid #2f80ed;
+  border-left: 6px solid #2f80ed;
+  border-radius: 5px;
+  color: #1a3d66;
+  margin: 30px auto 0 auto;
+  padding: 16px 20px;
+  text-align: left;
+}
+
+.maintenanceTitle {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.maintenanceMessage {
+  font-size: 14px;
+}
+
+.maintenanceTime {
+  color: #4f6b8a;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
 .tooltip {
   background-color: #fff;
   box-shadow: 0px 6px 18px rgba(0, 0, 0, 0.12);

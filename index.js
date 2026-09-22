@@ -1,4 +1,60 @@
 const maxDays = 30;
+let maintenance = null;
+
+async function loadMaintenance() {
+  try {
+    const response = await fetch("maintenance.json", { cache: "no-store" });
+    if (!response.ok) {
+      return;
+    }
+    const data = await response.json();
+    if (!data || !data.active) {
+      return;
+    }
+    maintenance = data;
+    renderMaintenanceBanner(data);
+  } catch (e) {
+    // No maintenance file or invalid JSON: nothing to show.
+  }
+}
+
+function formatMaintenanceTime(value) {
+  return new Date(value).toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
+function renderMaintenanceBanner(data) {
+  const banner = document.getElementById("maintenance");
+  banner.querySelector(".maintenanceTitle").innerText =
+    data.title || "Maintenance in Progress";
+  banner.querySelector(".maintenanceMessage").innerText = data.message || "";
+
+  let timeText = "";
+  if (data.started) {
+    timeText += "Started: " + formatMaintenanceTime(data.started);
+  }
+  if (data.expectedEnd) {
+    timeText +=
+      (timeText ? "  \u00b7  " : "") +
+      "Expected to end: " + formatMaintenanceTime(data.expectedEnd);
+  }
+  banner.querySelector(".maintenanceTime").innerText = timeText;
+  banner.style.display = "block";
+}
+
+function isUnderMaintenance(key) {
+  if (!maintenance) {
+    return false;
+  }
+  const services = maintenance.services || [];
+  return services.length == 0 || services.includes(key);
+}
 
 async function genReportLog(container, key, url) {
   const response = await fetch("logs/" + key + "_report.log");
@@ -20,7 +76,8 @@ function constructStatusStream(key, url, uptimeData) {
   }
 
   const lastSet = uptimeData[0];
-  const color = getColor(lastSet);
+  const underMaintenance = isUnderMaintenance(key);
+  const color = underMaintenance ? "maintenance" : getColor(lastSet);
 
   let title = key;
   if (key.includes("_app")) {
@@ -122,7 +179,9 @@ function getStatusText(color) {
         ? "Major Outage"
         : color == "partial"
           ? "Partial Outage"
-          : "Unknown";
+          : color == "maintenance"
+            ? "Under Maintenance"
+            : "Unknown";
 }
 
 function getStatusDescriptiveText(color) {
@@ -244,6 +303,7 @@ function hideTooltip() {
 }
 
 async function genAllReports() {
+  await loadMaintenance();
   const response = await fetch("urls.cfg");
   const configText = await response.text();
   const configLines = configText.split("\n");
