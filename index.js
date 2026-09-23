@@ -1,166 +1,4 @@
 const maxDays = 30;
-let maintenance = null;
-let maintenanceHistory = [];
-
-async function loadMaintenance() {
-  try {
-    const response = await fetch("maintenance.json", { cache: "no-store" });
-    if (!response.ok) {
-      return;
-    }
-    const data = await response.json();
-    if (!data) {
-      return;
-    }
-    maintenanceHistory = data.history || [];
-    renderMaintenanceHistory(maintenanceHistory);
-    if (!data.active) {
-      return;
-    }
-    maintenance = data;
-    renderMaintenanceBanner(data);
-  } catch (e) {
-    // No maintenance file or invalid JSON: nothing to show.
-  }
-}
-
-function formatMaintenanceTime(value) {
-  return new Date(value).toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZoneName: "short",
-  });
-}
-
-function renderMaintenanceBanner(data) {
-  const banner = document.getElementById("maintenance");
-  banner.querySelector(".maintenanceTitle").innerText =
-    data.title || "Maintenance in Progress";
-  banner.querySelector(".maintenanceMessage").innerText = data.message || "";
-
-  let timeText = "";
-  if (data.started) {
-    timeText += "Started: " + formatMaintenanceTime(data.started);
-  }
-  if (data.expectedEnd) {
-    timeText +=
-      (timeText ? "  \u00b7  " : "") +
-      "Expected to end: " + formatMaintenanceTime(data.expectedEnd);
-  }
-  banner.querySelector(".maintenanceTime").innerText = timeText;
-  banner.style.display = "block";
-}
-
-function formatDuration(start, end) {
-  const minutes = Math.round((new Date(end) - new Date(start)) / 60000);
-  if (!isFinite(minutes) || minutes < 0) {
-    return "";
-  }
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return (h ? h + "h " : "") + m + "m";
-}
-
-function renderMaintenanceHistory(history) {
-  if (!history.length) {
-    return;
-  }
-  const list = document.getElementById("historyList");
-  const sorted = history
-    .slice()
-    .sort((a, b) => new Date(b.started) - new Date(a.started));
-
-  sorted.forEach((item) => {
-    const entry = create("div", "historyItem");
-
-    const header = create("div", "historyItemHeader");
-    const title = create("span", "historyItemTitle");
-    title.innerText = item.title || "Maintenance";
-    header.appendChild(title);
-    const badge = create("span", "success historyBadge");
-    badge.innerText = "Resolved";
-    header.appendChild(badge);
-    entry.appendChild(header);
-
-    const when = create("div", "historyItemTime");
-    let whenText = "";
-    if (item.started) {
-      whenText += formatMaintenanceTime(item.started);
-    }
-    if (item.ended) {
-      whenText += " \u2013 " + formatMaintenanceTime(item.ended);
-      const duration = formatDuration(item.started, item.ended);
-      if (duration) {
-        whenText += "  \u00b7  " + duration;
-      }
-    }
-    when.innerText = whenText;
-    entry.appendChild(when);
-
-    if (item.services && item.services.length) {
-      const affected = create("div", "historyItemServices");
-      const names = [...new Set(item.services.map(getServiceTitle))];
-      affected.innerText = "Affected: " + names.join(", ");
-      entry.appendChild(affected);
-    }
-
-    if (item.message) {
-      const message = create("div", "historyItemMessage");
-      message.innerText = item.message;
-      entry.appendChild(message);
-    }
-
-    list.appendChild(entry);
-  });
-
-  document.getElementById("history").style.display = "block";
-}
-
-function getServiceTitle(key) {
-  if (key.includes("_app")) {
-    return "Application";
-  } else if (key.includes("_website")) {
-    return "Website";
-  }
-  return key;
-}
-
-function getMaintenanceForDay(key, date) {
-  const dayStr = date.toDateString();
-  for (const item of maintenanceHistory) {
-    if (!item.started || !item.ended) {
-      continue;
-    }
-    const services = item.services || [];
-    if (services.length && !services.includes(key)) {
-      continue;
-    }
-    let cursor = new Date(item.started);
-    const end = new Date(item.ended);
-    while (cursor <= end) {
-      if (cursor.toDateString() == dayStr) {
-        return item;
-      }
-      cursor.setDate(cursor.getDate() + 1);
-      cursor.setHours(0, 0, 0, 0);
-    }
-    if (end.toDateString() == dayStr) {
-      return item;
-    }
-  }
-  return null;
-}
-
-function isUnderMaintenance(key) {
-  if (!maintenance) {
-    return false;
-  }
-  const services = maintenance.services || [];
-  return services.length == 0 || services.includes(key);
-}
 
 async function genReportLog(container, key, url) {
   const response = await fetch("logs/" + key + "_report.log");
@@ -182,10 +20,14 @@ function constructStatusStream(key, url, uptimeData) {
   }
 
   const lastSet = uptimeData[0];
-  const underMaintenance = isUnderMaintenance(key);
-  const color = underMaintenance ? "maintenance" : getColor(lastSet);
+  const color = getColor(lastSet);
 
-  const title = getServiceTitle(key);
+  let title = key;
+  if (key.includes("_app")) {
+    title = "Application";
+  } else if (key.includes("_website")) {
+    title = "Website";
+  }
 
   const container = templatize("statusContainerTemplate", {
     title: title,
@@ -217,15 +59,14 @@ function getColor(uptimeVal) {
 }
 
 function constructStatusSquare(key, date, uptimeVal) {
-  const window = getMaintenanceForDay(key, date);
-  const color = window ? "failure" : getColor(uptimeVal);
+  const color = getColor(uptimeVal);
   let square = templatize("statusSquareTemplate", {
     color: color,
     tooltip: getTooltip(key, date, color),
   });
 
   const show = () => {
-    showTooltip(square, key, date, color, window);
+    showTooltip(square, key, date, color);
   };
   square.addEventListener("mouseover", show);
   square.addEventListener("mousedown", show);
@@ -281,9 +122,7 @@ function getStatusText(color) {
         ? "Major Outage"
         : color == "partial"
           ? "Partial Outage"
-          : color == "maintenance"
-            ? "Under Maintenance"
-            : "Unknown";
+          : "Unknown";
 }
 
 function getStatusDescriptiveText(color) {
@@ -379,21 +218,16 @@ function splitRowsByDate(rows) {
 }
 
 let tooltipTimeout = null;
-function showTooltip(element, key, date, color, window) {
+function showTooltip(element, key, date, color) {
   clearTimeout(tooltipTimeout);
   const toolTipDiv = document.getElementById("tooltip");
 
   document.getElementById("tooltipDateTime").innerText = date.toDateString();
-  document.getElementById("tooltipDescription").innerText = window
-    ? (window.title || "Maintenance") +
-      ": " +
-      formatMaintenanceTime(window.started) +
-      " \u2013 " +
-      formatMaintenanceTime(window.ended)
-    : getStatusDescriptiveText(color);
+  document.getElementById("tooltipDescription").innerText =
+    getStatusDescriptiveText(color);
 
   const statusDiv = document.getElementById("tooltipStatus");
-  statusDiv.innerText = window ? "Maintenance" : getStatusText(color);
+  statusDiv.innerText = getStatusText(color);
   statusDiv.className = color;
 
   toolTipDiv.style.top = element.offsetTop + element.offsetHeight + 10;
@@ -410,7 +244,6 @@ function hideTooltip() {
 }
 
 async function genAllReports() {
-  await loadMaintenance();
   const response = await fetch("urls.cfg");
   const configText = await response.text();
   const configLines = configText.split("\n");
